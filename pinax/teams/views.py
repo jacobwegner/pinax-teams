@@ -202,6 +202,19 @@ class TeamInviteView(FormView):
         form_kwargs.update({"team": self.team})
         return form_kwargs
 
+    def get_unbound_form(self):
+        """
+        Overrides behavior of FormView.get_form_kwargs
+        when method is POST or PUT
+        """
+        form_kwargs = self.get_form_kwargs()
+        # @@@ remove fields that would cause the form to be bound
+        # when instantiated
+        bound_fields = ["data", "files"]
+        for field in bound_fields:
+            form_kwargs.pop(field, None)
+        return self.get_form_class()(**form_kwargs)
+
     def form_valid(self, form):
         user_or_email = form.cleaned_data["invitee"]
         role = form.cleaned_data["role"]
@@ -209,12 +222,12 @@ class TeamInviteView(FormView):
             membership = self.team.invite_user(self.request.user, user_or_email, role)
         else:
             membership = self.team.add_user(user_or_email, role)
-        form_class = self.get_form_class()
+
         data = {
             "html": render_to_string(
                 "teams/_invite_form.html",
                 {
-                    "invite_form": form_class(team=self.team),
+                    "invite_form": self.get_unbound_form(),
                     "team": self.team
                 },
                 context_instance=RequestContext(self.request)

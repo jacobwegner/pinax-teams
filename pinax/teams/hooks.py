@@ -5,6 +5,11 @@ from django.core.urlresolvers import reverse
 
 class TeamDefaultHookset(object):
 
+    # allows the search field in the Membership admin
+    # to be overridden if the custom user model does
+    # not have a username field
+    membership_search_fields = ["user__username"]
+
     def build_team_url(self, url_name, team_slug):
         return reverse(url_name, args=[team_slug])
 

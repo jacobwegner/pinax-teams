@@ -240,23 +240,17 @@ class TeamInviteView(FormView):
             form_kwargs.pop(field, None)
         return self.get_form_class()(**form_kwargs)
 
-    def after_membership_added(self, form, membership):
+    def after_membership_added(self, form):
         """
         Allows the developer to customize actions that happen after a membership
         was added in form_valid
         """
         pass
 
-    def form_valid(self, form):
-        user_or_email = form.cleaned_data["invitee"]
-        role = form.cleaned_data["role"]
-        if isinstance(user_or_email, string_types):
-            membership = self.team.invite_user(self.request.user, user_or_email, role)
-        else:
-            membership = self.team.add_user(user_or_email, role, by=self.request.user)
-
-        self.after_membership_added(form, membership)
-
+    def get_form_success_data(self, form):
+        """
+        Allows customization of the JSON data returned when a valid form submission occurs.
+        """
         data = {
             "html": render_to_string(
                 "teams/_invite_form.html",
@@ -267,6 +261,8 @@ class TeamInviteView(FormView):
                 context_instance=RequestContext(self.request)
             )
         }
+
+        membership = self.membership
         if membership is not None:
             if membership.state == Membership.STATE_APPLIED:
                 fragment_class = ".applicants"
@@ -290,6 +286,19 @@ class TeamInviteView(FormView):
                     )
                 }
             })
+        return data
+
+    def form_valid(self, form):
+        user_or_email = form.cleaned_data["invitee"]
+        role = form.cleaned_data["role"]
+        if isinstance(user_or_email, string_types):
+            self.membership = self.team.invite_user(self.request.user, user_or_email, role)
+        else:
+            self.membership = self.team.add_user(user_or_email, role, by=self.request.user)
+
+        self.after_membership_added(form)
+
+        data = self.get_form_success_data(form)
         return self.render_to_response(data)
 
     def form_invalid(self, form):

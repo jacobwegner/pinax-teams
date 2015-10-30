@@ -116,6 +116,10 @@ class Team(models.Model):
         return chain
 
     @property
+    def full_name(self):
+        return " : ".join([a.name for a in self.ancestors])
+
+    @property
     def applicants(self):
         return self.memberships.filter(state=Membership.STATE_APPLIED)
 

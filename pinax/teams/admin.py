@@ -3,6 +3,7 @@ from django.utils.translation import ugettext_lazy as _
 
 import reversion
 
+from .hooks import hookset
 from .models import Team, Membership
 
 
@@ -21,10 +22,11 @@ admin.site.register(
         "description",
         "member_access",
         "manager_access",
-        "creator"
+        "creator",
+        "parent",
     ],
     prepopulated_fields={"slug": ("name",)},
-    raw_id_fields=["creator"]
+    raw_id_fields=["creator", "parent"]
 )
 
 
@@ -32,7 +34,7 @@ class MembershipAdmin(reversion.VersionAdmin):
     raw_id_fields = ["user"]
     list_display = ["team", "user", "state", "role"]
     list_filter = ["team"]
-    search_fields = ["user__username"]
+    search_fields = hookset.membership_search_fields
 
 
 admin.site.register(Membership, MembershipAdmin)

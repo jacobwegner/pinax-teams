@@ -3,6 +3,7 @@ import os
 import uuid
 
 from django.core.urlresolvers import reverse
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
@@ -15,6 +16,10 @@ from kaleo.models import JoinInvitation
 from slugify import slugify
 
 from . import signals
+from .hooks import hookset
+
+
+MESSAGE_STRINGS = hookset.get_message_strings()
 
 
 def avatar_upload(instance, filename):
@@ -23,8 +28,14 @@ def avatar_upload(instance, filename):
     return os.path.join("avatars", filename)
 
 
-def create_slug(name):
-    return slugify(name)[:50]
+def create_slug(name, parent=None):
+    slug = slugify(name)
+    if parent:
+        slug = "{parent_pk}-{slug}".format(
+            parent_pk=parent.pk,
+            slug=slug,
+        )
+    return slug[:50]
 
 
 @python_2_unicode_compatible
@@ -57,11 +68,17 @@ class Team(models.Model):
     creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="teams_created", verbose_name=_("creator"))
     created = models.DateTimeField(default=timezone.now, editable=False, verbose_name=_("created"))
 
+    parent = models.ForeignKey("self", blank=True, null=True, related_name="children")
+
     def get_absolute_url(self):
         return reverse("team_detail", args=[self.slug])
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        if self.pk and self.pk == self.parent_id:
+            raise ValidationError({"parent": MESSAGE_STRINGS["self-referencing-parent"]})
 
     def can_join(self, user):
         state = self.state_for(user)
@@ -80,6 +97,28 @@ class Team(models.Model):
     def can_apply(self, user):
         state = self.state_for(user)
         return self.member_access == Team.MEMBER_ACCESS_APPLICATION and state is None
+
+    #@@@
+    def get_root_team(team):
+        while getattr(team, "parent"):
+            team = team.parent
+        return team
+
+    # @@@
+    @property
+    def ancestors(team):
+        chain = []
+        while getattr(team, "parent"):
+            chain.append(team)
+            team = team.parent
+        chain.append(team)
+        #filo
+        chain.reverse()
+        return chain
+
+    @property
+    def full_name(self):
+        return " : ".join([a.name for a in self.ancestors])
 
     @property
     def applicants(self):
@@ -137,7 +176,7 @@ class Team(models.Model):
     def is_on_team(self, user):
         return self.acceptances.filter(user=user).exists()
 
-    def add_user(self, user, role):
+    def add_user(self, user, role, by=None):
         state = Membership.STATE_AUTO_JOINED
         if self.manager_access == Team.MANAGER_ACCESS_INVITE:
             state = Membership.STATE_INVITED
@@ -145,7 +184,7 @@ class Team(models.Model):
             user=user,
             defaults={"role": role, "state": state}
         )
-        signals.added_member.send(sender=self, membership=membership)
+        signals.added_member.send(sender=self, membership=membership, by=by)
         return membership
 
     def invite_user(self, from_user, to_email, role, message=None):
@@ -156,14 +195,31 @@ class Team(models.Model):
                 defaults={"role": role, "state": Membership.STATE_INVITED}
             )
             invite.send_invite()
-            signals.invited_user.send(sender=self, membership=membership)
+            signals.invited_user.send(sender=self, membership=membership, by=from_user)
             return membership
 
     def for_user(self, user):
-        try:
-            return self.memberships.get(user=user)
-        except Membership.DoesNotExist:
-            pass
+        """
+        Return the first membership found for the current team and user
+        or for any of the team's parents and the user
+
+        @@@ we may decide to explicitly add membership for "children" if a 
+        user is a manager or member of a parent org
+        """
+        attr = "_membership_for_user"
+
+        if hasattr(self, attr) is False:
+            team = self
+            membership = None
+            while team:
+                try:
+                    membership = team.memberships.get(user=user)
+                    break
+                except Membership.DoesNotExist:
+                    team = team.parent
+            # @@@ care about the type of membership if retrieved from a parent
+            setattr(self, attr, membership)
+        return getattr(self, attr)
 
     def state_for(self, user):
         membership = self.for_user(user=user)
@@ -171,13 +227,16 @@ class Team(models.Model):
             return membership.state
 
     def role_for(self, user):
+        if hookset.user_is_staff(user):
+            return Membership.ROLE_MANAGER
+
         membership = self.for_user(user)
         if membership:
             return membership.role
 
     def save(self, *args, **kwargs):
         if not self.id:
-            self.slug = create_slug(self.name)
+            self.slug = create_slug(self.name, self.parent)
         self.full_clean()
         super(Team, self).save(*args, **kwargs)
 
@@ -237,7 +296,7 @@ class Membership(models.Model):
             if self.role == Membership.ROLE_MEMBER:
                 self.role = Membership.ROLE_MANAGER
                 self.save()
-                signals.promoted_member.send(sender=self, membership=self)
+                signals.promoted_member.send(sender=self, membership=self, by=by)
                 return True
         return False
 
@@ -247,7 +306,7 @@ class Membership(models.Model):
             if self.role == Membership.ROLE_MANAGER:
                 self.role = Membership.ROLE_MEMBER
                 self.save()
-                signals.demoted_member.send(sender=self, membership=self)
+                signals.demoted_member.send(sender=self, membership=self, by=by)
                 return True
         return False
 
@@ -286,24 +345,24 @@ class Membership(models.Model):
             return self.invite.get_status_display()
         return "Unknown"
 
-    def resend_invite(self):
+    def resend_invite(self, by=None):
         if self.invite is not None:
             code = self.invite.signup_code
             code.expiry = timezone.now() + datetime.timedelta(days=5)
             code.save()
             code.send()
-            signals.resent_invite.send(sender=self, membership=self)
+            signals.resent_invite.send(sender=self, membership=self, by=by)
 
-    def remove(self):
+    def remove(self, by=None):
         if self.invite is not None:
             self.invite.signup_code.delete()
             self.invite.delete()
         self.delete()
-        signals.removed_membership.send(sender=Membership, team=self.team, user=self.user)
+        signals.removed_membership.send(sender=Membership, team=self.team, user=self.user, invitee=self.invitee, by=by)
 
     @property
     def invitee(self):
-        return self.user or self.invite.to_user_email
+        return self.user or self.invite.to_user_email()
 
     def __str__(self):
         return "{0} in {1}".format(self.user, self.team)

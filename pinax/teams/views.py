@@ -10,8 +10,8 @@ from django.views.generic.edit import CreateView
 from django.views.generic import ListView, FormView, TemplateView
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 
-from account.compat import get_user_model
 from account.decorators import login_required
 from account.mixins import LoginRequiredMixin
 from account.views import SignupView

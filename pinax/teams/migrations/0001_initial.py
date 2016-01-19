@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('kaleo', '0001_initial'),
+        ('invitations', '0001_initial'),
     ]
 
     operations = [
@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
                 ('state', models.CharField(max_length=20, choices=[(b'applied', b'applied'), (b'invited', b'invited'), (b'declined', b'declined'), (b'rejected', b'rejected'), (b'accepted', b'accepted'), (b'auto-joined', b'auto joined')])),
                 ('role', models.CharField(default=b'member', max_length=20, choices=[(b'member', b'member'), (b'manager', b'manager'), (b'owner', b'owner')])),
                 ('created', models.DateTimeField(default=django.utils.timezone.now)),
-                ('invite', models.ForeignKey(related_name='memberships', blank=True, to='kaleo.JoinInvitation', null=True)),
+                ('invite', models.ForeignKey(related_name='memberships', blank=True, to='invitations.JoinInvitation', null=True)),
             ],
         ),
         migrations.CreateModel(

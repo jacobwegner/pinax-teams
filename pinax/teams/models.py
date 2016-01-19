@@ -11,7 +11,7 @@ from django.utils.encoding import python_2_unicode_compatible
 import reversion
 
 from account.compat import AUTH_USER_MODEL
-from kaleo.models import JoinInvitation
+from pinax.invitations.models import JoinInvitation
 from slugify import slugify
 
 from . import signals
@@ -196,7 +196,7 @@ class Team(models.Model):
         Return the first membership found for the current team and user
         or for any of the team's parents and the user
 
-        @@@ we may decide to explicitly add membership for "children" if a 
+        @@@ we may decide to explicitly add membership for "children" if a
         user is a manager or member of a parent org
         """
         attr = "_membership_for_user"

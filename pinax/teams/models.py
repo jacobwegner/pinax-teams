@@ -11,8 +11,8 @@ from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 
 from pinax.invitations.models import JoinInvitation
+from reversion import revisions as reversion
 from slugify import slugify
-import reversion
 
 from . import signals
 from .hooks import hookset
@@ -174,6 +174,21 @@ class Team(models.Model):
 
     def is_on_team(self, user):
         return self.acceptances.filter(user=user).exists()
+
+    def add_member(self, user, role=None, state=None):
+        # we do this, rather than put the Membership constants in declaration
+        # because Membership is not yet defined
+        if role is None:
+            role = Membership.ROLE_MEMBER
+        if state is None:
+            state = Membership.STATE_AUTO_JOINED
+
+        membership, created = Membership.objects.get_or_create(
+            team=self,
+            user=user,
+            defaults={"role": role, "state": state},
+        )
+        return membership
 
     def add_user(self, user, role, by=None):
         state = Membership.STATE_AUTO_JOINED

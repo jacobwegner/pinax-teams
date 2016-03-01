@@ -148,13 +148,15 @@ def team_manage(request):
 def team_join(request):
     team = request.team
     state = team.state_for(request.user)
+
     if team.manager_access == Team.MEMBER_ACCESS_INVITATION and \
        state is None and not request.user.is_staff:
         raise Http404()
 
     if team.can_join(request.user) and request.method == "POST":
         membership, created = Membership.objects.get_or_create(team=team, user=request.user)
-        membership.state = Membership.STATE_MEMBER
+        membership.role = Membership.ROLE_MEMBER
+        membership.state = Membership.STATE_AUTO_JOINED
         membership.save()
         messages.success(request, MESSAGE_STRINGS["joined-team"])
     return redirect("team_detail", slug=team.slug)
@@ -452,11 +454,11 @@ def team_member_remove(request, pk):
 @team_required
 @login_required
 def autocomplete_users(request):
-    User = get_user_model()
     team = request.team
     role = team.role_for(request.user)
     if role not in [Membership.ROLE_MANAGER, Membership.ROLE_OWNER]:
         raise Http404()
+    User = get_user_model()
     users = User.objects.exclude(pk__in=[
         x.user.pk for x in team.memberships.exclude(user__isnull=True)
     ])

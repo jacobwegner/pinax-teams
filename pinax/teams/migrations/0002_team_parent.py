@@ -14,6 +14,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='team',
             name='parent',
-            field=models.ForeignKey(related_name='children', blank=True, to='teams.Team', null=True),
+            field=models.ForeignKey(related_name=b'children', blank=True, to='pinax_teams.Team', null=True),
         ),
     ]

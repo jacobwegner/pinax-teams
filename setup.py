@@ -23,7 +23,7 @@ setup(
     tests_require=[
         "Django>=1.7",
         "django-reversion>=1.8.1",
-        "pinax-invitations>=2.1.1",
+        "pinax-invitations>=4.0.4",
         "unicode-slugify>=0.1.1",
         "Pillow>=2.3.0",
         "django-user-accounts>=1.3",
